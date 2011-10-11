@@ -1,0 +1,231 @@
+NAME
+    Scope::Context - Object-oriented interface for inspecting or acting upon
+    upper scope frames.
+
+VERSION
+    Version 0.01
+
+SYNOPSIS
+        use Scope::Context;
+
+        for (1 .. 5) {
+         sub {
+          eval {
+           # create Scope::Context objects
+           my ($block, $sub, $eval, $loop);
+           {
+            $block = Scope::Context->new;
+            $sub   = $block->sub;    # = $block->up
+            $eval  = $block->eval;   # = $block->up(2)
+            $loop  = $eval->up;      # = $block->up(3)
+           }
+
+           eval {
+            # This will throw an exception, since $block has expired.
+            $block->localize('$x' => 1);
+           };
+
+           # This prints "hello" when the eval block above ends.
+           $eval->reap(sub { print "hello\n" });
+
+           # Ignore $SIG{__DIE__} just for the loop.
+           $loop->localize_delete('%SIG', '__DIE__');
+
+           # Execute the callback as if it ran in place of the sub.
+           my @values = $sub->uplevel(sub {
+            return @_, 2;
+           }, 1);
+
+           # Immediately return (1, 2, 3) from the sub, bypassing the eval.
+           $sub->unwind(@values, 3);
+          }
+         }->();
+        }
+
+DESCRIPTION
+    This class provides an object-oriented interface to Scope::Upper's
+    functionalities. A Scope::Context object represents a currently active
+    dynamic scope (or context), and encapsulates the corresponding
+    Scope::Upper-compatible context identifier. All of Scope::Upper's
+    functions are then made available as methods. This gives you a prettier
+    and safer interface when you are not reaching for extreme performance,
+    but rest assured that the overhead of this module is minimal anyway.
+
+    The Scope::Context methods actually do more than their subroutine
+    counterparts from Scope::Upper : before each call, the target context
+    will be checked to ensure it is still active (which means that it is
+    still present in the current call stack), and an exception will be
+    thrown if you attempt to act on a context that has already expired. This
+    means that :
+
+        my $sc;
+        {
+         $sc = Scope::Context->new;
+        }
+        $sc->reap(sub { print "hello\n });
+
+    will croak when "reap" is called.
+
+METHODS
+  "new [ $context ]"
+    Creates a new immutable Scope::Context object from the
+    Scope::Upper-comptabile context $context. If omitted, $context defaults
+    to the current context.
+
+  "here"
+    A synonym for "new".
+
+  "cxt"
+    Read-only accessor to the Scope::Upper context corresponding to the
+    topic Scope::Context object.
+
+  "uid"
+    Read-only accessor to the Scope::Upper UID of the topic Scope::Context
+    object.
+
+    This class also overloads the "==" operator, which will return true if
+    and only if its two operands are Scope::Context objects that have the
+    same UID.
+
+  "is_valid"
+    Returns true if and only if the topic context is still valid (that is,
+    it designates a scope that is higher than the topic context in the call
+    stack).
+
+  "assert_valid"
+    Throws an exception if the topic context has expired and is no longer
+    valid. Returns true otherwise.
+
+  "want"
+    Returns the Perl context (in the sense of "wantarray" : "undef" for void
+    context, '' for scalar context, and true for list context) in which is
+    executed the scope corresponding to the topic Scope::Context object.
+
+  "up [ $frames ]"
+    Returns a new Scope::Context object pointing to the $frames-th upper
+    scope above the topic context.
+
+    This method can also be invoked as a class method, in which case it is
+    equivalent to calling "up" on a Scope::Context object for the current
+    context.
+
+    If omitted, $frames defaults to 1.
+
+        sub {
+         {
+          {
+           my $up = Scope::Context->new->up(2); # = Scope::Context->up(2)
+           # $up points two contextes above this one, which is the sub.
+          }
+         }
+        }
+
+  "sub [ $frames ]"
+    Returns a new Scope::Context object pointing to the $frames-th
+    subroutine scope above the topic context.
+
+    This method can also be invoked as a class method, in which case it is
+    equivalent to calling "sub" on a Scope::Context object for the current
+    context.
+
+    If omitted, $frames defaults to 0, which results in the closest sub
+    enclosing the topic context.
+
+        outer();
+
+        sub outer {
+         inner();
+        }
+
+        sub inner {
+         my $sub = Scope::Context->new->sub(1); # = Scope::Context->sub
+         # $sub points to the context for the outer() sub.
+        }
+
+  "eval [ $frames ]"
+    Returns a new Scope::Context object pointing to the $frames-th "eval"
+    scope above the topic context.
+
+    This method can also be invoked as a class method, in which case it is
+    equivalent to calling "eval" on a Scope::Context object for the current
+    context.
+
+    If omitted, $frames defaults to 0, which results in the closest eval
+    enclosing the topic context.
+
+        eval {
+         sub {
+          my $eval = Scope::Context->new->eval; # = Scope::Context->eval
+          # $eval points to the eval context.
+         }->()
+        }
+
+  "reap $code"
+    Execute $code when the topic context ends.
+
+    See "reap" in Scope::Upper for details.
+
+  "localize $what, $value"
+    Localize the variable described by $what to the value $value when the
+    control flow returns to the scope pointed by the topic context.
+
+    See "localize" in Scope::Upper for details.
+
+  "localize_elem $what, $key, $value"
+    Localize the element $key of the variable $what to the value $value when
+    the control flow returns to the scope pointed by the topic context.
+
+    See "localize_elem" in Scope::Upper for details.
+
+  "localize_delete $what, $key"
+    Delete the element $key from the variable $what when the control flow
+    returns to the scope pointed by the topic context.
+
+    See "localize_delete" in Scope::Upper for details.
+
+  "unwind @values"
+    Immediately returns the scalars listed in @values from the closest
+    subroutine enclosing the topic context.
+
+    See "unwind" in Scope::Upper for details.
+
+  "uplevel $code, @args"
+    Executes the code reference $code with arguments @args in the same
+    setting as the closest subroutine enclosing the topic context, then
+    returns to the current scope the values returned by $code.
+
+    See "uplevel" in Scope::Upper for details.
+
+DEPENDENCIES
+    Carp (core module since perl 5), Scalar::Util (since 5.7.3).
+
+    Scope::Upper 0.18.
+
+SEE ALSO
+    Scope::Upper.
+
+    Continuation::Escape.
+
+AUTHOR
+    Vincent Pit, "<perl at profvince.com>", <http://www.profvince.com>.
+
+    You can contact me by mail or on "irc.perl.org" (vincent).
+
+BUGS
+    Please report any bugs or feature requests to "bug-scope-context at
+    rt.cpan.org", or through the web interface at
+    <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Scope-Context>. I will
+    be notified, and then you'll automatically be notified of progress on
+    your bug as I make changes.
+
+SUPPORT
+    You can find documentation for this module with the perldoc command.
+
+        perldoc Scope::Context
+
+COPYRIGHT & LICENSE
+    Copyright 2011 Vincent Pit, all rights reserved.
+
+    This program is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself.
+
