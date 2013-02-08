@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 4 * 3 + 2;
+use Test::More tests => 4 * 3 + 3;
 
 use Scope::Context;
 
@@ -84,6 +84,19 @@ use Scope::Context;
   return qw<x y z t>;
  }->();
  is_deeply \@res, [ 1, 2, 3 ], 'unwind: done';
+}
+
+{
+ my @res = do {
+  sub {
+   my $up = Scope::Context->up;
+   $up->yield(4, 5, 6);
+   fail 'yield: not reached 1';
+  }->();
+  fail 'yield: not reached 2';
+  return qw<x y z t>;
+ };
+ is_deeply \@res, [ 4, 5, 6 ], 'yield: done';
 }
 
 {

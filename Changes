@@ -1,4 +1,12 @@
 Revision history for Scope-Context
 
+0.02    2013-02-08 16:45 UTC
+        + Add : The methods yield(), package(), file(), line(), sub_name(),
+                sub_has_args(), gimme(), eval_text(), is_require(), hints_bits(),
+                warnings_bits() and hints_hash() were implemented.
+        + Chg : Scope::Upper 0.21 is now required.
+        + Doc : POD tweaks and clarifications.
+        + Tst : Author tests overhaul.
+
 0.01    2011-10-11 13:10 UTC
         First version, released on an unsuspecting world.

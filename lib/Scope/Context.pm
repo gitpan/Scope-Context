@@ -8,7 +8,7 @@ use warnings;
 use Carp         ();
 use Scalar::Util ();
 
-use Scope::Upper 0.18 ();
+use Scope::Upper 0.21 ();
 
 =head1 NAME
 
@@ -16,11 +16,11 @@ Scope::Context - Object-oriented interface for inspecting or acting upon upper s
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 =head1 SYNOPSIS
 
@@ -29,7 +29,7 @@ our $VERSION = '0.01';
     for (1 .. 5) {
      sub {
       eval {
-       # create Scope::Context objects
+       # Create Scope::Context objects for different upper frames.
        my ($block, $sub, $eval, $loop);
        {
         $block = Scope::Context->new;
@@ -46,7 +46,7 @@ our $VERSION = '0.01';
        # This prints "hello" when the eval block above ends.
        $eval->reap(sub { print "hello\n" });
 
-       # Ignore $SIG{__DIE__} just for the loop.
+       # Ignore $SIG{__DIE__} just for the loop body.
        $loop->localize_delete('%SIG', '__DIE__');
 
        # Execute the callback as if it ran in place of the sub.
@@ -56,8 +56,15 @@ our $VERSION = '0.01';
 
        # Immediately return (1, 2, 3) from the sub, bypassing the eval.
        $sub->unwind(@values, 3);
+
+       # Not reached.
       }
+
+      # Not reached.
      }->();
+
+     # unwind() returns here. "hello\n" was printed, and now
+     # $SIG{__DIE__} is undefined.
     }
 
 =head1 DESCRIPTION
@@ -70,19 +77,22 @@ This gives you a prettier and safer interface when you are not reaching for extr
 The L<Scope::Context> methods actually do more than their subroutine counterparts from L<Scope::Upper> : before each call, the target context will be checked to ensure it is still active (which means that it is still present in the current call stack), and an exception will be thrown if you attempt to act on a context that has already expired.
 This means that :
 
-    my $sc;
+    my $cxt;
     {
-     $sc = Scope::Context->new;
+     $cxt = Scope::Context->new;
     }
-    $sc->reap(sub { print "hello\n });
+    $cxt->reap(sub { print "hello\n });
 
 will croak when L</reap> is called.
 
 =head1 METHODS
 
-=head2 C<new [ $context ]>
+=head2 C<new>
 
-Creates a new immutable L<Scope::Context> object from the L<Scope::Upper>-comptabile context C<$context>.
+    my $cxt = Scope::Context->new;
+    my $cxt = Scope::Context->new($scope_upper_cxt);
+
+Creates a new immutable L<Scope::Context> object from the L<Scope::Upper>-comptabile context identifier C<$context>.
 If omitted, C<$context> defaults to the current context.
 
 =cut
@@ -121,11 +131,15 @@ sub _croak {
 
 =head2 C<cxt>
 
-Read-only accessor to the L<Scope::Upper> context corresponding to the topic L<Scope::Context> object.
+    my $scope_upper_cxt = $cxt->cxt;
+
+Read-only accessor to the L<Scope::Upper> context identifier associated with the invocant.
 
 =head2 C<uid>
 
-Read-only accessor to the L<Scope::Upper> UID of the topic L<Scope::Context> object.
+    my $uid = $cxt->uid;
+
+Read-only accessor to the L<Scope::Upper> unique identifier representing the L<Scope::Upper> context associated with the invocant.
 
 =cut
 
@@ -155,7 +169,9 @@ use overload (
 
 =head2 C<is_valid>
 
-Returns true if and only if the topic context is still valid (that is, it designates a scope that is higher than the topic context in the call stack).
+    my $is_valid = $cxt->is_valid;
+
+Returns true if and only if the invocant is still valid (that is, it designates a scope that is higher on the call stack than the current scope).
 
 =cut
 
@@ -163,7 +179,9 @@ sub is_valid { Scope::Upper::validate_uid($_[0]->uid) }
 
 =head2 C<assert_valid>
 
-Throws an exception if the topic context has expired and is no longer valid.
+    $cxt->assert_valid;
+
+Throws an exception if the invocant has expired and is no longer valid.
 Returns true otherwise.
 
 =cut
@@ -176,9 +194,115 @@ sub assert_valid {
  1;
 }
 
+=head2 C<package>
+
+    $cxt->package;
+
+Returns the namespace in use when the scope denoted by the invocant begins.
+
+=head2 C<file>
+
+    $cxt->file;
+
+Returns the name of the file where the scope denoted by the invocant belongs to.
+
+=head2 C<line>
+
+    $cxt->line;
+
+Returns the line number where the scope denoted by the invocant begins.
+
+=head2 C<sub_name>
+
+    $cxt->sub_name;
+
+Returns the name of the subroutine called for this context, or C<undef> if this is not a subroutine context.
+
+=head2 C<sub_has_args>
+
+    $cxt->sub_has_args;
+
+Returns a boolean indicating whether a new instance of C<@_> was set up for this context, or C<undef> if this is not a subroutine context.
+
+=head2 C<gimme>
+
+    $cxt->gimme;
+
+Returns the context (in the sense of L<perlfunc/wantarray>) in which the scope denoted by the invocant is executed.
+
+=head2 C<eval_text>
+
+    $cxt->eval_text;
+
+Returns the contents of the string being compiled for this context, or C<undef> if this is not an eval context.
+
+=head2 C<is_require>
+
+    $cxt->is_require;
+
+Returns a boolean indicating whether this eval context was created by C<require>, or C<undef> if this is not an eval context.
+
+=head2 C<hints_bits>
+
+    $cxt->hints_bits;
+
+Returns the value of the lexical hints bit mask (available as C<$^H> at compile time) in use when the scope denoted by the invocant begins.
+
+=head2 C<warnings_bits>
+
+    $cxt->warnings_bits;
+
+Returns the bit string representing the warnings (available as C<${^WARNING_BITS}> at compile time) in use when the scope denoted by the invocant begins.
+
+=head2 C<hints_hash>
+
+    $cxt->hints_hash;
+
+Returns a reference to the lexical hints hash (available as C<%^H> at compile time) in use when the scope denoted by the invocant begins.
+This method is available only on perl 5.10 and greater.
+
+=cut
+
+BEGIN {
+ my %infos = (
+  package       => 0,
+  file          => 1,
+  line          => 2,
+  sub_name      => 3,
+  sub_has_args  => 4,
+  gimme         => 5,
+  eval_text     => 6,
+  is_require    => 7,
+  hints_bits    => 8,
+  warnings_bits => 9,
+  (hints_hash   => 10) x ("$]" >= 5.010),
+ );
+
+ for my $name (sort { $infos{$a} <=> $infos{$b} } keys %infos) {
+  my $idx = $infos{$name};
+  local $@;
+  eval <<"  TEMPLATE";
+   sub $name {
+    my \$self = shift;
+
+    \$self->assert_valid;
+
+    my \$info = \$self->{info};
+    \$info = \$self->{info} = [ Scope::Upper::context_info(\$self->cxt) ]
+                                                                        unless \$info;
+
+    return \$info->[$idx];
+   }
+  TEMPLATE
+  die $@ if $@;
+ }
+}
+
 =head2 C<want>
 
-Returns the Perl context (in the sense of C<wantarray> : C<undef> for void context, C<''> for scalar context, and true for list context) in which is executed the scope corresponding to the topic L<Scope::Context> object.
+    my $want = $cxt->want;
+
+Returns the Perl context (in the sense of C<wantarray> : C<undef> for void context, C<''> for scalar context, and true for list context) in which is executed the scope pointed by the invocant.
 
 =cut
 
@@ -190,11 +314,15 @@ sub want {
  Scope::Upper::want_at($self->cxt);
 }
 
-=head2 C<up [ $frames ]>
+=head2 C<up>
 
-Returns a new L<Scope::Context> object pointing to the C<$frames>-th upper scope above the topic context.
+    my $up_cxt = $cxt->up;
+    my $up_cxt = $cxt->up($frames);
+    my $up_cxt = Scope::Context->up;
 
-This method can also be invoked as a class method, in which case it is equivalent to calling L</up> on a L<Scope::Context> object for the current context.
+Returns a new L<Scope::Context> object pointing to the C<$frames>-th upper scope above the scope pointed by the invocant.
+
+This method can also be invoked as a class method, in which case it is equivalent to calling L</up> on a L<Scope::Context> object representing the current context.
 
 If omitted, C<$frames> defaults to C<1>.
 
@@ -212,27 +340,32 @@ If omitted, C<$frames> defaults to C<1>.
 sub up {
  my ($self, $frames) = @_;
 
+ my $cxt;
  if (Scalar::Util::blessed($self)) {
   $self->assert_valid;
+  $cxt = $self->cxt;
  } else {
-  $self = $self->new(Scope::Upper::UP(Scope::Upper::SUB()));
+  $cxt = Scope::Upper::UP(Scope::Upper::SUB());
  }
 
  $frames = 1 unless defined $frames;
 
- my $cxt = $self->cxt;
  $cxt = Scope::Upper::UP($cxt) for 1 .. $frames;
 
  $self->new($cxt);
 }
 
-=head2 C<sub [ $frames ]>
+=head2 C<sub>
 
-Returns a new L<Scope::Context> object pointing to the C<$frames>-th subroutine scope above the topic context.
+    my $sub_cxt = $cxt->sub;
+    my $sub_cxt = $cxt->sub($frames);
+    my $sub_cxt = Scope::Context->sub;
+
+Returns a new L<Scope::Context> object pointing to the C<$frames>-th subroutine scope above the scope pointed by the invocant.
 
 This method can also be invoked as a class method, in which case it is equivalent to calling L</sub> on a L<Scope::Context> object for the current context.
 
-If omitted, C<$frames> defaults to C<0>, which results in the closest sub enclosing the topic context.
+If omitted, C<$frames> defaults to C<0>, which results in the closest sub enclosing the scope pointed by the invocant.
 
     outer();
 
@@ -241,7 +374,7 @@ If omitted, C<$frames> defaults to C<0>, which results in the closest sub enclos
     }
 
     sub inner {
-     my $sub = Scope::Context->new->sub(1); # = Scope::Context->sub
+     my $sub = Scope::Context->new->sub(1); # = Scope::Context->sub(1)
      # $sub points to the context for the outer() sub.
     }
 
@@ -250,27 +383,33 @@ If omitted, C<$frames> defaults to C<0>, which results in the closest sub enclos
 sub sub {
  my ($self, $frames) = @_;
 
+ my $cxt;
  if (Scalar::Util::blessed($self)) {
   $self->assert_valid;
+  $cxt = $self->cxt;
  } else {
-  $self = $self->new(Scope::Upper::UP(Scope::Upper::SUB()));
+  $cxt = Scope::Upper::UP(Scope::Upper::SUB());
  }
 
  $frames = 0 unless defined $frames;
 
- my $cxt = Scope::Upper::SUB($self->cxt);
+ $cxt = Scope::Upper::SUB($cxt);
  $cxt = Scope::Upper::SUB(Scope::Upper::UP($cxt)) for 1 .. $frames;
 
  $self->new($cxt);
 }
 
-=head2 C<eval [ $frames ]>
+=head2 C<eval>
 
-Returns a new L<Scope::Context> object pointing to the C<$frames>-th C<eval> scope above the topic context.
+    my $eval_cxt = $cxt->eval;
+    my $eval_cxt = $cxt->eval($frames);
+    my $eval_cxt = Scope::Context->eval;
+
+Returns a new L<Scope::Context> object pointing to the C<$frames>-th C<eval> scope above the scope pointed by the invocant.
 
 This method can also be invoked as a class method, in which case it is equivalent to calling L</eval> on a L<Scope::Context> object for the current context.
 
-If omitted, C<$frames> defaults to C<0>, which results in the closest eval enclosing the topic context.
+If omitted, C<$frames> defaults to C<0>, which results in the closest eval enclosing the scope pointed by the invocant.
 
     eval {
      sub {
@@ -284,23 +423,27 @@ If omitted, C<$frames> defaults to C<0>, which results in the closest eval enclo
 sub eval {
  my ($self, $frames) = @_;
 
+ my $cxt;
  if (Scalar::Util::blessed($self)) {
   $self->assert_valid;
+  $cxt = $self->cxt;
  } else {
-  $self = $self->new(Scope::Upper::UP(Scope::Upper::SUB()));
+  $cxt = Scope::Upper::UP(Scope::Upper::SUB());
  }
 
  $frames = 0 unless defined $frames;
 
- my $cxt = Scope::Upper::EVAL($self->cxt);
+ $cxt = Scope::Upper::EVAL($cxt);
  $cxt = Scope::Upper::EVAL(Scope::Upper::UP($cxt)) for 1 .. $frames;
 
  $self->new($cxt);
 }
 
-=head2 C<reap $code>
+=head2 C<reap>
 
-Execute C<$code> when the topic context ends.
+    $cxt->reap($code);
+
+Execute C<$code> when the scope pointed by the invocant ends.
 
 See L<Scope::Upper/reap> for details.
 
@@ -314,9 +457,11 @@ sub reap {
  &Scope::Upper::reap($code, $self->cxt);
 }
 
-=head2 C<localize $what, $value>
+=head2 C<localize>
 
-Localize the variable described by C<$what> to the value C<$value> when the control flow returns to the scope pointed by the topic context.
+    $cxt->localize($what, $value);
+
+Localize the variable described by C<$what> to the value C<$value> when the control flow returns to the scope pointed by the invocant.
 
 See L<Scope::Upper/localize> for details.
 
@@ -330,9 +475,11 @@ sub localize {
  Scope::Upper::localize($what, $value, $self->cxt);
 }
 
-=head2 C<localize_elem $what, $key, $value>
+=head2 C<localize_elem>
 
-Localize the element C<$key> of the variable C<$what> to the value C<$value> when the control flow returns to the scope pointed by the topic context.
+    $cxt->localize_elem($what, $key, $value);
+
+Localize the element C<$key> of the variable C<$what> to the value C<$value> when the control flow returns to the scope pointed by the invocant.
 
 See L<Scope::Upper/localize_elem> for details.
 
@@ -346,9 +493,11 @@ sub localize_elem {
  Scope::Upper::localize_elem($what, $key, $value, $self->cxt);
 }
 
-=head2 C<localize_delete $what, $key>
+=head2 C<localize_delete>
 
-Delete the element C<$key> from the variable C<$what> when the control flow returns to the scope pointed by the topic context.
+    $cxt->localize_delete($what, $key);
+
+Delete the element C<$key> from the variable C<$what> when the control flow returns to the scope pointed by the invocant.
 
 See L<Scope::Upper/localize_delete> for details.
 
@@ -362,9 +511,11 @@ sub localize_delete {
  Scope::Upper::localize_delete($what, $key, $self->cxt);
 }
 
-=head2 C<unwind @values>
+=head2 C<unwind>
 
-Immediately returns the scalars listed in C<@values> from the closest subroutine enclosing the topic context.
+    $cxt->unwind(@values);
+
+Immediately returns the scalars listed in C<@values> from the closest subroutine enclosing the scope pointed by the invocant.
 
 See L<Scope::Upper/unwind> for details.
 
@@ -378,9 +529,29 @@ sub unwind {
  Scope::Upper::unwind(@_ => $self->cxt);
 }
 
-=head2 C<uplevel $code, @args>
+=head2 C<yield>
 
-Executes the code reference C<$code> with arguments C<@args> in the same setting as the closest subroutine enclosing the topic context, then returns to the current scope the values returned by C<$code>.
+    $cxt->yield(@values);
+
+Immediately returns the scalars listed in C<@values> from the scope pointed by the invocant, whatever it may be (except a substitution eval context).
+
+See L<Scope::Upper/yield> for details.
+
+=cut
+
+sub yield {
+ my $self = shift;
+
+ $self->assert_valid;
+
+ Scope::Upper::yield(@_ => $self->cxt);
+}
+
+=head2 C<uplevel>
+
+    my @ret = $cxt->uplevel($code, @args);
+
+Executes the code reference C<$code> with arguments C<@args> in the same setting as the closest subroutine enclosing the scope pointed by the invocant, then returns to the current scope the values returned by C<$code>.
 
 See L<Scope::Upper/uplevel> for details.
 
@@ -399,7 +570,7 @@ sub uplevel {
 
 L<Carp> (core module since perl 5), L<Scalar::Util> (since 5.7.3).
 
-L<Scope::Upper> 0.18.
+L<Scope::Upper> 0.21.
 
 =head1 SEE ALSO
 
@@ -426,7 +597,7 @@ You can find documentation for this module with the perldoc command.
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright 2011 Vincent Pit, all rights reserved.
+Copyright 2011,2012,2013 Vincent Pit, all rights reserved.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

@@ -12,8 +12,8 @@ use Scope::Context;
  {
   my $block = Scope::Context->new;
   my $up = $block->up;
-  cmp_ok $up,    '==', $sc, '$up == $sc';
-  cmp_ok $block, '!=', $sc, '$block != $sc';
+  ok $up    == $sc, '$up == $sc';
+  ok $block != $sc, '$block != $sc';
  }
 }
 

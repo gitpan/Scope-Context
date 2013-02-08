@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 4 + 9;
+use Test::More tests => 4 + 10;
 
 use Scope::Context;
 
@@ -23,7 +23,9 @@ my $fail_rx = qr/^Context has expired at \Q$0\E line [0-9]+/;
 
  my @methods = qw<
   up sub eval
-  reap localize localize_elem localize_delete unwind uplevel
+  reap localize localize_elem localize_delete
+  unwind yield
+  uplevel
  >;
  for my $action (@methods) {
   local $@;
